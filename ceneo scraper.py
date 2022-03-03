@@ -1,8 +1,15 @@
 import requests
 import bs4
 from tkinter import *
-import selenium
- 
+from selenium import webdriver
+
+DRIVER_PATH = 'ceneo-scraper\chromedriver.exe'
+DRIVER = webdriver.Chrome(DRIVER_PATH)
+
+DRIVER.get('https://www.ceneo.pl/Smartfony;szukaj-iphone+11+64gb+czarny')
+html = DRIVER.page_source()
+print(html)
+
 class App(Tk):
     def __init__(self):
         super().__init__()
