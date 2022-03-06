@@ -1,3 +1,4 @@
+from selenium.common.exceptions import NoSuchElementException
 import time
 from tkinter import *
 from tkinter import ttk
@@ -31,6 +32,7 @@ driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()))
 class App(Tk):
     def __init__(self):
         super().__init__()
+        self.center_window()
         self.title('Ceneo scraper') 
         self.product_var = StringVar(self)
         self.style = ttk.Style(self)
@@ -57,41 +59,65 @@ class App(Tk):
                 product_name = product.find_element(By.CSS_SELECTOR, 'span')
                 self.product_list.append(product_name.text)
             
-            self.product_menu = ttk.OptionMenu(self, self.product_var, *self.product_list, command=self.show_product)
+            self.geometry('250x150')
+            self.frame = ttk.LabelFrame(self, text='Choose product:')
+            self.frame.place(x=20, y=80)
             self.product_var.set(self.product_list[0])
-            self.product_menu.grid(row=2, column=0) 
-           
+            self.product_menu = ttk.OptionMenu(self.frame, self.product_var, self.product_list[0], *self.product_list, command=self.show_product)
+            self.product_menu.pack()
+            self.update_idletasks()
+            frame_width = self.frame.winfo_width()
+            self.geometry(f'{frame_width+50}x150')
+
         except TimeoutError:
             print('Timed out')
             self.quit()
 
     def create_widgets(self):
         self.search_label = ttk.Label(self, text = "Search your prodcut:")
-        self.search_label.grid(row=0, column=0)
+        self.search_label.place(x=20, y=20)
         self.input_box = ttk.Entry(self)
-        self.input_box.grid(row=1, column=0)
+        self.input_box.place(x=20, y=45)
         self.search_button = ttk.Button(self, text='Search', command=self.make_request)
-        self.search_button.grid(row=0, column=1)
+        self.search_button.place(x=150, y=43)
     
     def find_price(self, product):
         price = product.find_element(By.CLASS_NAME, 'cat-prod-row__price')
         price = price.find_element(By.CLASS_NAME, 'btn-compare-outer')
+        try:
+            self.title = price.find_element(By.CLASS_NAME, 'js_seoUrl.go-to-product.button.button-primary.js_force-conv.js_clickHash')
+        except NoSuchElementException:
+            self.title = price.find_element(By.CLASS_NAME, 'js_seoUrl.go-to-shop.button.button-primary.js_force-conv.js_clickHash')
+        
+        self.title = self.title.text
+        if self.title == 'IDŹ DO SKLEPU':
+            price_value = product.find_element(By.CLASS_NAME, 'price-format.nowrap')
+            price_value = price_value.text
+            return price_value
         price = price.click()
         price = driver.find_element(By.CLASS_NAME, 'product-offers__list.js_product-offers')
         price_value = price.find_element(By.CLASS_NAME, 'price-format.nowrap')
         price_value = price_value.text
         return price_value
 
-    def find_shop_link(self):
+    def find_shop_link(self, product):
+        if self.title == 'IDŹ DO SKLEPU':
+            shop_link = product.find_element(By.CLASS_NAME, 'js_seoUrl.go-to-shop.button.button-primary.js_force-conv.js_clickHash')
+            shop_link = shop_link.get_attribute('href')
+            return shop_link
         shop_link = driver.find_element(By.CLASS_NAME, 'product-offers__list.js_product-offers')
         shop_link = shop_link.find_element(By.CLASS_NAME, 'button.button--primary.button--flex.go-to-shop')
         shop_link = shop_link.get_attribute('href')
         return shop_link
 
-    def find_product_picture(self):
+    def find_product_picture(self, product):
+        if self.title == 'IDŹ DO SKLEPU':
+            product_picture = product.find_element(By.XPATH, "//img")
+            product_picture = product_picture.get_attribute('src')
+            print(product_picture) # CHŁOP WYPLUWA JAKIS LINK Z DUPY
+            return product_picture
         product_picture = driver.find_element(By.CLASS_NAME, 'js_gallery-anchor.js_image-preview')
         product_picture.click()
-        # product_picture = driver.find_element(By.CLASS_NAME, 'product-picture-large.opaque')
         product_picture = WebDriverWait(driver, 5).until(EC.presence_of_element_located((By.CLASS_NAME, 'product-picture-large.opaque')))
         product_picture = product_picture.get_attribute('src')
         product_picture_close = driver.find_element(By.CLASS_NAME, 'popup__exit')
@@ -108,7 +134,9 @@ class App(Tk):
         product_image = Image.open(BytesIO(product_image_data))
         product_image = ImageTk.PhotoImage(product_image)
         self.product_img_label = Label(self, image=product_image, relief = 'sunken', bd=7)
-        self.product_img_label.grid(row=10, column=10)
+        self.update_idletasks()
+        frame_width = self.frame.winfo_width()
+        self.product_img_label.place(x=frame_width + 50, y=20)
         self.product_img_label.image = product_image
 
     def display_logo_img(self, logo_picture):
@@ -116,8 +144,27 @@ class App(Tk):
         logo_image = Image.open(BytesIO(logo_image_data))
         logo_image = ImageTk.PhotoImage(logo_image)
         self.logo_img_label = Label(self, image=logo_image, relief = 'sunken', bd=7)
-        self.logo_img_label.grid(row=20, column=20)
+        self.update_idletasks()
+        height = self.product_img_label.winfo_height()
+        img_x = self.product_img_label.winfo_x()
+        self.logo_img_label.place(x=img_x, y=height+90)
         self.logo_img_label.image = logo_image
+
+    def display_product_info(self, price_value, shop_name):
+        self.price_label = Label(self, text='Best price:  ' + price_value, font=('Helvetica', 15))
+        self.seller_label = Label(self, text='Seller:  ' + shop_name, font=('Helvetica', 15))
+        self.update_idletasks()
+        height = self.product_img_label.winfo_height()
+        img_x = self.product_img_label.winfo_x()
+        self.price_label.place(x=img_x, y=height+30)
+        self.seller_label.place(x=img_x, y=height+60)
+
+    def find_shop_name(self, shop_link):
+        driver.get(shop_link)
+        time.sleep(2)
+        shop_name = driver.current_url
+        shop_name = shop_name.split('/')
+        return shop_name[2]
 
     def show_product(self, *args):
         cookie_close = driver.find_element(By.CLASS_NAME, 'cookie-close-button.js_cookie-monster-close-accept.js_gtm_button')
@@ -128,17 +175,27 @@ class App(Tk):
             product_name = product.find_element(By.CSS_SELECTOR, 'span')
             if product_name.text in args:
                 price_value = self.find_price(product)
-                shop_link = self.find_shop_link()
-                product_picture = self.find_product_picture()
-                logo_picture = self.find_logo_picture()
+                shop_link = self.find_shop_link(product)
+                product_picture = self.find_product_picture(product)
+                if self.title != 'IDŹ DO SKLEPU':
+                    logo_picture = self.find_logo_picture()
+                shop_name = self.find_shop_name(shop_link)
                 self.display_product_img(product_picture)
-                self.display_logo_img(logo_picture)
-                # driver.get(shop_link)
-                # time.sleep(2)
-                # shop_name = driver.current_url
-                # shop_name = shop_name.split('/')
+                if self.title != 'IDŹ DO SKLEPU':
+                    self.display_logo_img(logo_picture)
+                self.display_product_info(price_value, shop_name)
+                self.update_idletasks()
+                win_width = self.product_img_label.winfo_x() + self.product_img_label.winfo_width() + 30
+                win_height = self.logo_img_label.winfo_y() + self.logo_img_label.winfo_height() + 30
+                self.geometry(f'{win_width}x{win_height}+500+100')
                 break
-        print(price_value, logo_picture)
+    
+    def center_window(self, width=250, height=100):
+        screen_width = self.winfo_screenwidth()
+        screen_height = self.winfo_screenheight()
+        x = (screen_width/2) - (width/2)
+        y = (screen_height/2) - (2*height)
+        self.geometry('%dx%d+%d+%d' % (width, height, x, y))
 
 if __name__ == '__main__':
     app = App()
