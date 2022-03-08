@@ -58,12 +58,29 @@ class Popup(Toplevel):
 class App(Tk):
     def __init__(self):
         super().__init__()
+        self.first_search = True 
         self.center_window()
         self.title('Ceneo scraper') 
         self.product_var = StringVar(self)
         self.style = ttk.Style(self)
         self.style.theme_use('vista')
         self.create_widgets()
+
+    def get_products(self):
+        try:
+            driver.get('https://www.ceneo.pl')
+            input = WebDriverWait(driver, 10).until(
+                EC.presence_of_element_located((By.ID, 'form-head-search-q'))
+            )
+            input.send_keys(self.input)
+            input.submit()
+            main = WebDriverWait(driver, 10).until(
+                EC.presence_of_element_located((By.CLASS_NAME, 'category-list-body.js_category-list-body.js_search-results.js_products-list-main'))
+            )
+            self.products = main.find_elements(By.CLASS_NAME, 'cat-prod-row__body')
+        except TimeoutError:
+            print('Timed out')
+            self.quit()
 
     def make_request(self):
         self.product_list = []
@@ -72,10 +89,11 @@ class App(Tk):
         if self.input == '':
             warning = messagebox.showerror('Empty input', 'Please enter product name')
             return
-
+        
+        self.destroy_widgets()
         self.please_wait()
 
-        try: 
+        try:
             driver.get('https://www.ceneo.pl')
             input = WebDriverWait(driver, 10).until(
                 EC.presence_of_element_located((By.ID, 'form-head-search-q'))
@@ -118,6 +136,7 @@ class App(Tk):
             self.quit()
 
     def please_wait(self):
+        self.update_idletasks()
         win_width = self.winfo_width()
         win_height = self.winfo_height()
         padx = (win_width - 150)//2
@@ -229,12 +248,34 @@ class App(Tk):
         shop_name = shop_name.split('/')
         return shop_name[2]
 
+    def destroy_widgets(self):
+        try:
+            self.product_img_label.destroy()
+            self.price_label.destroy()
+            self.seller_label.destroy()
+            self.logo_img_label.destroy()
+            self.geometry('250x100')
+        except:
+            self.geometry('250x100')
+            pass
+    
     def show_product(self, *args):
-        self.please_wait()
-        cookie_close = WebDriverWait(driver, 5).until(EC.presence_of_element_located((By.CLASS_NAME, 'cookie-close-button.js_cookie-monster-close-accept.js_gtm_button')))
-        cookie_close.click()
-        pop_up_close = driver.find_element(By.CLASS_NAME, 'js_widget-close.widget-close')
-        pop_up_close.click()
+        if not self.first_search:
+            self.destroy_widgets()
+            self.please_wait()
+            self.get_products()
+        else:
+            self.geometry('250x100')
+            self.please_wait()
+
+        try:
+            cookie_close = WebDriverWait(driver, 5).until(EC.presence_of_element_located((By.CLASS_NAME, 'cookie-close-button.js_cookie-monster-close-accept.js_gtm_button')))
+            cookie_close.click()
+            pop_up_close = driver.find_element(By.CLASS_NAME, 'js_widget-close.widget-close')
+            pop_up_close.click()
+        except TimeoutException:
+            pass
+        
         for product in self.products:
             product_name = product.find_element(By.CSS_SELECTOR, 'span')
             if product_name.text in args:
@@ -257,6 +298,7 @@ class App(Tk):
                     win_height = self.seller_label.winfo_y() + self.seller_label.winfo_height() + 30
                 self.geometry(f'{win_width}x{win_height}+500+100')
                 break
+        self.first_search = False
     
     def center_window(self, width=250, height=100):
         screen_width = self.winfo_screenwidth()
