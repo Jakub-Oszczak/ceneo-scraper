@@ -13,6 +13,8 @@ from selenium.webdriver.support import expected_conditions as EC
 from PIL import ImageTk, Image
 from urllib.request import urlopen
 from io import BytesIO
+import ctypes
+
 
 user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/85.0.4183.83 Safari/537.36"
 options = webdriver.ChromeOptions()
@@ -28,32 +30,8 @@ options.add_argument("--start-maximized")
 options.add_argument('--disable-gpu')
 options.add_argument('--disable-dev-shm-usage')
 options.add_argument('--no-sandbox')
-driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()))
+driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
 
-'''
-class Popup(Toplevel):
-    def __init__(self, parent):
-        super().__init__(parent)
-        self.center_window()
-        self.title('Wait') 
-        self.style = ttk.Style(self)
-        self.style.theme_use('vista')
-        self.progress = ttk.Progressbar(self, length=100)
-        self.progress.pack()
-    
-    def center_window(self, width=200, height=75):
-        screen_width = self.winfo_screenwidth()
-        screen_height = self.winfo_screenheight()
-        x = (screen_width/2) - (width/2)
-        y = (screen_height/2) - (2*height)
-        self.geometry('%dx%d+%d+%d' % (width, height, x, y))
-
-    def start_progress_bar(self, bool):
-        if bool:
-            self.progress.start()
-        else:
-            self.progress.stop()
-'''
 
 class App(Tk):
     def __init__(self):
@@ -129,8 +107,7 @@ class App(Tk):
             else:
                 width = width2
             self.geometry(f'{width+25}x150')
-# DODAJ SKLAOWANIE ZDJ BO CZASEM SĄ OGROMNE
-# DODAJ MOŻLIWOŚĆ ZMIANY PRZEDMIOTU PO WYŚWIETLENIU WYBRANEGO PRZEDMIOTU ORAZ WYSZUKANIA NOWEGO PRZEDMIOTU
+
         except TimeoutError:
             print('Timed out')
             self.quit()
@@ -214,6 +191,7 @@ class App(Tk):
     def display_product_img(self, product_picture):
         product_image_data = urlopen(product_picture).read()
         product_image = Image.open(BytesIO(product_image_data))
+        product_image = self.scale_img(product_image)
         product_image = ImageTk.PhotoImage(product_image)
         self.product_img_label = Label(self, image=product_image, relief = 'sunken', bd=7)
         self.update_idletasks()
@@ -221,9 +199,22 @@ class App(Tk):
         self.product_img_label.place(x=frame_width + 50, y=20)
         self.product_img_label.image = product_image
 
+    def scale_img(self, image):
+        user32 = ctypes.windll.user32
+        user32.SetProcessDPIAware()
+        w, h = user32.GetSystemMetrics(0), user32.GetSystemMetrics(1)
+        
+        width, height = image.size
+        while width > 0.5*w or height > 0.5*h:
+            width *= 0.6
+            height *= 0.6
+            image = image.resize((int(width), int(height)))
+        return image
+
     def display_logo_img(self, logo_picture):
         logo_image_data = urlopen(logo_picture).read()
         logo_image = Image.open(BytesIO(logo_image_data))
+        logo_image = self.scale_img(logo_image)
         logo_image = ImageTk.PhotoImage(logo_image)
         self.logo_img_label = Label(self, image=logo_image, relief = 'sunken', bd=7)
         self.update_idletasks()
@@ -271,7 +262,7 @@ class App(Tk):
         try:
             cookie_close = WebDriverWait(driver, 5).until(EC.presence_of_element_located((By.CLASS_NAME, 'cookie-close-button.js_cookie-monster-close-accept.js_gtm_button')))
             cookie_close.click()
-            pop_up_close = driver.find_element(By.CLASS_NAME, 'js_widget-close.widget-close')
+            pop_up_close = WebDriverWait(driver, 1).until(EC.presence_of_element_located((By.CLASS_NAME, 'js_widget-close.widget-close')))
             pop_up_close.click()
         except TimeoutException:
             pass
@@ -291,15 +282,41 @@ class App(Tk):
                     self.display_logo_img(logo_picture)
                 self.display_product_info(price_value, shop_name)
                 self.update_idletasks()
-                win_width = self.product_img_label.winfo_x() + self.product_img_label.winfo_width() + 30
-                if self.title != 'IDŹ DO SKLEPU':
-                    win_height = self.logo_img_label.winfo_y() + self.logo_img_label.winfo_height() + 30
-                else:
-                    win_height = self.seller_label.winfo_y() + self.seller_label.winfo_height() + 30
+                win_width = self.manage_width()
+                win_height = self.manage_height()
                 self.geometry(f'{win_width}x{win_height}+500+100')
                 break
         self.first_search = False
     
+    def manage_width(self):
+        width_list = []
+        try:
+            width_list.append(self.product_img_label.winfo_width())
+        except:
+            pass
+        try:
+            width_list.append(self.logo_img_label.winfo_width())
+        except:
+            pass
+        try:
+            width_list.append(self.seller_label.winfo_width())
+        except:
+            pass
+        try:
+            width_list.append(self.price_label.winfo_width())
+        except:
+            pass
+        width = max(width_list)
+        win_width = self.product_img_label.winfo_x() + width + 30
+        return win_width
+    
+    def manage_height(self):
+        if self.title != 'IDŹ DO SKLEPU':
+            win_height = self.logo_img_label.winfo_y() + self.logo_img_label.winfo_height() + 30
+        else:
+            win_height = self.seller_label.winfo_y() + self.seller_label.winfo_height() + 30
+        return win_height
+
     def center_window(self, width=250, height=100):
         screen_width = self.winfo_screenwidth()
         screen_height = self.winfo_screenheight()
