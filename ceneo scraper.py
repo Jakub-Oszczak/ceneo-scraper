@@ -1,4 +1,6 @@
+from tkinter import messagebox
 from selenium.common.exceptions import NoSuchElementException
+from selenium.common.exceptions import TimeoutException
 import time
 from tkinter import *
 from tkinter import ttk
@@ -28,6 +30,30 @@ options.add_argument('--disable-dev-shm-usage')
 options.add_argument('--no-sandbox')
 driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()))
 
+'''
+class Popup(Toplevel):
+    def __init__(self, parent):
+        super().__init__(parent)
+        self.center_window()
+        self.title('Wait') 
+        self.style = ttk.Style(self)
+        self.style.theme_use('vista')
+        self.progress = ttk.Progressbar(self, length=100)
+        self.progress.pack()
+    
+    def center_window(self, width=200, height=75):
+        screen_width = self.winfo_screenwidth()
+        screen_height = self.winfo_screenheight()
+        x = (screen_width/2) - (width/2)
+        y = (screen_height/2) - (2*height)
+        self.geometry('%dx%d+%d+%d' % (width, height, x, y))
+
+    def start_progress_bar(self, bool):
+        if bool:
+            self.progress.start()
+        else:
+            self.progress.stop()
+'''
 
 class App(Tk):
     def __init__(self):
@@ -38,10 +64,17 @@ class App(Tk):
         self.style = ttk.Style(self)
         self.style.theme_use('vista')
         self.create_widgets()
- 
+
     def make_request(self):
         self.product_list = []
+
         self.input = self.input_box.get()
+        if self.input == '':
+            warning = messagebox.showerror('Empty input', 'Please enter product name')
+            return
+
+        self.please_wait()
+
         try: 
             driver.get('https://www.ceneo.pl')
             input = WebDriverWait(driver, 10).until(
@@ -49,16 +82,21 @@ class App(Tk):
             )
             input.send_keys(self.input)
             input.submit()
+            try:
+                main = WebDriverWait(driver, 10).until(
+                    EC.presence_of_element_located((By.CLASS_NAME, 'category-list-body.js_category-list-body.js_search-results.js_products-list-main'))
+                )
+            except TimeoutException:
+                warning = messagebox.showerror('Error', 'Product not found')
+                self.cancle_wait()
+                return
 
-            main = WebDriverWait(driver, 10).until(
-                EC.presence_of_element_located((By.ID, 'body'))
-            )
-            main1 = main.find_element(By.CLASS_NAME, 'category-list-body.js_category-list-body.js_search-results.js_products-list-main')
-            self.products = main1.find_elements(By.CLASS_NAME, 'cat-prod-row__content')
+            self.products = main.find_elements(By.CLASS_NAME, 'cat-prod-row__body')
             for product in self.products:
                 product_name = product.find_element(By.CSS_SELECTOR, 'span')
                 self.product_list.append(product_name.text)
             
+            self.cancle_wait()
             self.geometry('250x150')
             self.frame = ttk.LabelFrame(self, text='Choose product:')
             self.frame.place(x=20, y=80)
@@ -66,12 +104,37 @@ class App(Tk):
             self.product_menu = ttk.OptionMenu(self.frame, self.product_var, self.product_list[0], *self.product_list, command=self.show_product)
             self.product_menu.pack()
             self.update_idletasks()
-            frame_width = self.frame.winfo_width()
-            self.geometry(f'{frame_width+50}x150')
-
+            width1 = self.frame.winfo_x() + self.frame.winfo_width()
+            width2 = self.search_button.winfo_x() + self.search_button.winfo_width()
+            if (width1) > (width2):
+                width = width1
+            else:
+                width = width2
+            self.geometry(f'{width+25}x150')
+# DODAJ SKLAOWANIE ZDJ BO CZASEM SĄ OGROMNE
+# DODAJ MOŻLIWOŚĆ ZMIANY PRZEDMIOTU PO WYŚWIETLENIU WYBRANEGO PRZEDMIOTU ORAZ WYSZUKANIA NOWEGO PRZEDMIOTU
         except TimeoutError:
             print('Timed out')
             self.quit()
+
+    def please_wait(self):
+        win_width = self.winfo_width()
+        win_height = self.winfo_height()
+        padx = (win_width - 150)//2
+        pady = (win_height//5)
+        self.wait_frame = ttk.LabelFrame(self, width=win_width, height=win_height, padding=(padx, pady))
+        self.wait_frame.place(x=0, y=0)
+        self.search_button['state'] = DISABLED
+        self.progress = ttk.Progressbar(self.wait_frame, length=150, value=75)
+        self.progress.pack()
+        self.wait_label = Label(self.wait_frame, text='Please wait...')
+        self.wait_label.pack()
+        self.update_idletasks()
+    
+    def cancle_wait(self):
+        self.search_button['state'] = ACTIVE
+        self.wait_frame.destroy()
+        self.update_idletasks()
 
     def create_widgets(self):
         self.search_label = ttk.Label(self, text = "Search your prodcut:")
@@ -112,9 +175,9 @@ class App(Tk):
 
     def find_product_picture(self, product):
         if self.title == 'IDŹ DO SKLEPU':
-            product_picture = product.find_element(By.XPATH, "//img")
+            product_picture = product.find_element(By.TAG_NAME, 'img')
             product_picture = product_picture.get_attribute('src')
-            print(product_picture) # CHŁOP WYPLUWA JAKIS LINK Z DUPY
+            print(product_picture)
             return product_picture
         product_picture = driver.find_element(By.CLASS_NAME, 'js_gallery-anchor.js_image-preview')
         product_picture.click()
@@ -167,7 +230,8 @@ class App(Tk):
         return shop_name[2]
 
     def show_product(self, *args):
-        cookie_close = driver.find_element(By.CLASS_NAME, 'cookie-close-button.js_cookie-monster-close-accept.js_gtm_button')
+        self.please_wait()
+        cookie_close = WebDriverWait(driver, 5).until(EC.presence_of_element_located((By.CLASS_NAME, 'cookie-close-button.js_cookie-monster-close-accept.js_gtm_button')))
         cookie_close.click()
         pop_up_close = driver.find_element(By.CLASS_NAME, 'js_widget-close.widget-close')
         pop_up_close.click()
@@ -180,13 +244,17 @@ class App(Tk):
                 if self.title != 'IDŹ DO SKLEPU':
                     logo_picture = self.find_logo_picture()
                 shop_name = self.find_shop_name(shop_link)
+                self.cancle_wait()
                 self.display_product_img(product_picture)
                 if self.title != 'IDŹ DO SKLEPU':
                     self.display_logo_img(logo_picture)
                 self.display_product_info(price_value, shop_name)
                 self.update_idletasks()
                 win_width = self.product_img_label.winfo_x() + self.product_img_label.winfo_width() + 30
-                win_height = self.logo_img_label.winfo_y() + self.logo_img_label.winfo_height() + 30
+                if self.title != 'IDŹ DO SKLEPU':
+                    win_height = self.logo_img_label.winfo_y() + self.logo_img_label.winfo_height() + 30
+                else:
+                    win_height = self.seller_label.winfo_y() + self.seller_label.winfo_height() + 30
                 self.geometry(f'{win_width}x{win_height}+500+100')
                 break
     
@@ -196,6 +264,7 @@ class App(Tk):
         x = (screen_width/2) - (width/2)
         y = (screen_height/2) - (2*height)
         self.geometry('%dx%d+%d+%d' % (width, height, x, y))
+
 
 if __name__ == '__main__':
     app = App()
